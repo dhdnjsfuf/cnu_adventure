@@ -1,0 +1,127 @@
+import json
+import requests
+from google import genai
+from google.genai import types
+
+# ==========================================
+# 1. API 키 2개만 입력 (큰따옴표 유지!)
+# ==========================================
+
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+# ==========================================
+# 2. 카카오 로컬 API로 대전 실제 카페·주소·좌표 검색
+# ==========================================
+def search_real_cafes(area: str, user_query: str):
+    # "대전 유성구 궁동/어은동 (1km 이내)" -> 동네별 검색어로 분리
+    clean_area = area.split("(")[0].strip()
+    if "/" in clean_area:
+        parts = clean_area.split()
+        prefix = " ".join(parts[:-1])
+        dongs = parts[-1].split("/")
+        queries = [f"{prefix} {dong} 카페" for dong in dongs]
+    else:
+        queries = [f"{clean_area} 카페"]
+
+    # 사용자가 '스터디', '카공', '디저트' 등 특정 키워드를 썼다면 검색 정확도 보강
+    if "카공" in user_query or "공부" in user_query or "조용" in user_query:
+        queries.append(f"{clean_area.replace('/', ' ')} 스터디카페")
+
+    url = "https://dapi.kakao.com/v2/local/search/keyword.json"
+    headers = {"Authorization": f"KakaoAK {KAKAO_REST_KEY}"}
+
+    cafes_dict = {}
+    for q in queries:
+        params = {
+            "query": q,
+            "category_group_code": "CE7",  # CE7 = 카카오 카페 카테고리 코드
+            "size": 5
+        }
+        res = requests.get(url, headers=headers, params=params, timeout=5).json()
+        
+        if "documents" not in res:
+            print("카카오 API 응답 확인:", res)
+            continue
+
+        for doc in res["documents"]:
+            name = doc["place_name"]
+            if name not in cafes_dict:
+                cafes_dict[name] = {
+                    "name": name,
+                    "category": doc.get("category_name", ""),
+                    "address": doc["road_address_name"] or doc["address_name"],
+                    "lat": float(doc["y"]),  # 지도 담당 팀원에게 넘길 실제 위도
+                    "lng": float(doc["x"])   # 지도 담당 팀원에게 넘길 실제 경도
+                }
+    return list(cafes_dict.values())[:8]
+
+# ==========================================
+# 3. Gemini LLM으로 조건 매칭 및 TOP 3 요약 리포트 생성
+# ==========================================
+SYSTEM_INSTRUCTION = """
+당신은 대전 지역 대학생을 위한 지도 앱의 'AI 장소 추천 및 리뷰 분석 비서'입니다.
+반드시 아래 제공된 [카카오 실제 카페 목록]에 있는 매장 중에서만
+사용자의 요구 조건에 가장 잘 어울리는 카페 TOP 3를 선정하세요.
+
+규칙:
+1. 목록에 없는 카페를 새로 지어내지 마세요.
+2. name, address, lat, lng 값은 입력된 원본 데이터의 값을 한 글자도 바꾸지 말고 그대로 복사하세요.
+3. 각 카페의 세부 카테고리와 알려진 매장 특성을 바탕으로 광고성 표현을 배제한 3줄 요약 포인트를 작성하세요.
+
+반드시 아래 JSON 형식으로만 답하세요:
+{
+    "cafes": [
+        {
+            "name": "원본 카페 이름 그대로",
+            "address": "원본 도로명 주소 그대로",
+            "lat": 원본_위도_숫자,
+            "lng": 원본_경도_숫자,
+            "reason": "추천 이유 한 줄 요약",
+            "points": [
+                "소음도 및 분위기 요약",
+                "좌석 여유 및 테이블 크기 요약",
+                "콘센트 유무 및 편의시설 요약"
+            ]
+        }
+    ]
+}
+"""
+
+def recommend_cafes(user_query: str, area: str = "대전 유성구 궁동/어은동"):
+    # (1) 카카오 API에서 실제 대전 카페 목록 가져오기
+    real_cafes = search_real_cafes(area, user_query)
+    if not real_cafes:
+        return {"error": "카카오 API에서 카페를 찾지 못했습니다. KAKAO_REST_KEY가 정확한지 확인해 주세요."}
+
+    # (2) Gemini에게 후보 중 최적 3곳 선정 및 3줄 요약 요청
+    prompt = f"""
+    [사용자 요청 조건]: {user_query}
+    [카카오 실제 카페 목록]:
+    {json.dumps(real_cafes, ensure_ascii=False)}
+    """
+
+    candidate_models = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-3.8-flash"]
+    for model_name in candidate_models:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    response_mime_type="application/json",
+                    temperature=0.2
+                )
+            )
+            return json.loads(response.text)
+        except Exception:
+            print(f"[{model_name}] 서버 혼잡으로 다음 모델로 전환합니다...")
+            continue
+
+    return {"error": "모든 AI 모델이 일시적으로 혼잡합니다. 잠시 후 다시 시도해 주세요."}
+
+# 단독 실행 테스트
+if __name__ == "__main__":
+    print("카카오 실제 카페 조회 및 AI 분석 중...")
+    result = recommend_cafes("조용하고 콘센트 많은 카공 카페 찾아줘", "대전 유성구 궁동/어은동")
+    print(json.dumps(result, indent=2, ensure_ascii=False))
