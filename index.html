@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>문오이 지도 - 개인화 보행 코칭 & AI 장소 탐색</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+  <style>
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background-color: #E5E7EB;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    .screen {
+      display: none;
+      animation: fadeIn 0.22s ease-out;
+    }
+
+    .screen.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .dot-flashing {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .dot-flashing span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #584CF4;
+      animation: pulseDot 1.2s infinite ease-in-out;
+    }
+
+    .dot-flashing span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .dot-flashing span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes pulseDot {
+
+      0%,
+      80%,
+      100% {
+        opacity: 0.25;
+        transform: scale(0.85);
+      }
+
+      40% {
+        opacity: 1;
+        transform: scale(1.1);
+      }
+    }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col items-center justify-center py-4 px-2">
+
+  <!-- 시연/테스트용 상단 빠른 화면 전환 바 -->
+  <div
+    class="mb-3 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm border border-gray-200 flex flex-wrap items-center gap-1.5 text-xs">
+    <span class="font-bold text-indigo-600 px-1.5">시연 빠른이동:</span>
+    <button onclick="goScreen('screen-speed')"
+      class="px-2.5 py-1 rounded-full bg-gray-100 hover:bg-indigo-100 hover:text-indigo-700 font-medium transition">1.속도측정</button>
+    <button onclick="goScreen('screen-home')"
+      class="px-2.5 py-1 rounded-full bg-gray-100 hover:bg-indigo-100 hover:text-indigo-700 font-medium transition">2.홈</button>
+    <button onclick="goScreen('screen-chat')"
+      class="px-2.5 py-1 rounded-full bg-gray-100 hover:bg-indigo-100 hover:text-indigo-700 font-medium transition">3.AI챗봇</button>
+    <button onclick="goScreen('screen-report')"
+      class="px-2.5 py-1 rounded-full bg-gray-100 hover:bg-indigo-100 hover:text-indigo-700 font-medium transition">4.리포트</button>
+    <button onclick="goScreen('screen-route')"
+      class="px-2.5 py-1 rounded-full bg-gray-100 hover:bg-indigo-100 hover:text-indigo-700 font-medium transition">5.경로지도</button>
+    <button onclick="goScreen('screen-coach')"
+      class="px-2.5 py-1 rounded-full bg-gray-100 hover:bg-indigo-100 hover:text-indigo-700 font-medium transition">6.보행코칭</button>
+  </div>
+
+  <!-- 스마트폰 디바이스 프레임 -->
+  <div
+    class="w-full max-w-[390px] h-[812px] bg-[#F7F8FC] rounded-[42px] shadow-2xl border-[8px] border-[#1E222D] overflow-hidden relative flex flex-col">
+
+    <!-- 상단 상태바 -->
+    <div
+      class="h-8 bg-white px-6 flex items-center justify-between text-[11px] font-semibold text-gray-800 shrink-0 select-none">
+      <span>9:41</span>
+      <div class="w-24 h-4 bg-[#1E222D] rounded-b-2xl -mt-3"></div>
+      <div class="flex items-center gap-1.5">
+        <span>5G</span>
+        <div class="w-5 h-2.5 border border-gray-800 rounded-[3px] p-[1px] flex items-center">
+          <div class="w-full h-full bg-gray-800 rounded-[1px]"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         [SCREEN 1] Phase 1: 나만의 보행 및 이동 속도 등록 (신체 추정 + 10초 GPS/수동 실측)
+    ====================================================================== -->
+    <div id="screen-speed" class="screen active flex-1 flex-col justify-between overflow-y-auto no-scrollbar">
+      <div>
+        <div class="bg-white px-5 py-3 flex items-center justify-between border-b border-gray-100 sticky top-0 z-10">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#584CF4]"></span>
+            <h1 class="font-bold text-base text-gray-900">지도 (1단계)</h1>
+          </div>
+          <span class="px-2.5 py-0.5 rounded-full bg-[#EEF0FF] text-[#584CF4] text-xs font-bold">Phase 1</span>
+        </div>
+
+        <div class="p-4 space-y-3">
+          <!-- 상단 안내 배너 -->
+          <div class="bg-[#EEF0FF] rounded-2xl p-3 border border-indigo-100">
+            <p class="text-xs font-bold text-[#4338CA] mb-0.5">개인화 보폭·속도 프로파일링</p>
+            <p class="text-[11px] leading-relaxed text-indigo-900/80">
+              신체 정보로 예상 속도를 즉시 산출하거나, 10초 이동 테스트(GPS/직접입력)로 내 실제 속도를 정밀 등록합니다.
+            </p>
+          </div>
+          <!-- [STEP 1] 보행 역학·역진자 모델 기반 예상 속도 산출 카드 -->
+          <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-gray-100 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-extrabold text-gray-800">① 보행 역학 기반 예상 속도</span>
+              <span class="text-[10px] font-bold text-[#584CF4] bg-[#EEF0FF] px-2 py-0.5 rounded-full">
+                보폭 <span id="calc-stride">77.4</span>cm · 다리 <span id="calc-leg">95.1</span>cm
+              </span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div class="bg-[#F8F9FE] rounded-xl p-2.5 border border-gray-100">
+                <label class="block text-[10px] font-semibold text-gray-500 mb-1">키 (100~230 cm)</label>
+                <input id="input-height" type="number" min="100" max="230" value="172" oninput="updateBodyEstimate()"
+                  class="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-xs font-extrabold text-gray-900 outline-none focus:border-[#584CF4]" />
+              </div>
+              <div class="bg-[#F8F9FE] rounded-xl p-2.5 border border-gray-100">
+                <label class="block text-[10px] font-semibold text-gray-500 mb-1">발 사이즈 (150~350 mm)</label>
+                <input id="input-foot" type="number" min="150" max="350" step="5" value="265"
+                  oninput="updateBodyEstimate()"
+                  class="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-xs font-extrabold text-gray-900 outline-none focus:border-[#584CF4]" />
+              </div>
+            </div>
+
+            <!-- 역진자 물리 모델(Froude Number) & 안전율 요약 바 -->
+            <div
+              class="bg-indigo-50/70 rounded-xl px-2.5 py-2 border border-indigo-100 flex items-center justify-between text-[10px]">
+              <span class="text-indigo-900 font-semibold">
+                역진자 최적(Fr=0.25): <strong id="froude-walk">5.5</strong>km/h · 주행전이(Fr=0.5): <strong
+                  id="froude-trans">7.8</strong>km/h
+              </span>
+              <span class="px-1.5 py-0.5 rounded bg-white text-[#584CF4] font-extrabold shrink-0">SF 1.05</span>
+            </div>
+
+            <div class="grid grid-cols-3 gap-1.5 text-center bg-[#F8F9FE] rounded-xl p-2 border border-gray-100">
+              <div>
+                <p class="text-[10px] text-gray-400">걸음 (106보/분)</p>
+                <p class="text-xs font-extrabold text-gray-800"><span id="est-walk">5.2</span> km/h</p>
+              </div>
+              <div class="border-x border-gray-200">
+                <p class="text-[10px] text-gray-400">뛰기 (160보/분)</p>
+                <p class="text-xs font-extrabold text-gray-800"><span id="est-jog">9.7</span> km/h</p>
+              </div>
+              <div>
+                <p class="text-[10px] text-gray-400">질주 (190보/분)</p>
+                <p class="text-xs font-extrabold text-gray-800"><span id="est-run">14.2</span> km/h</p>
+              </div>
+            </div>
+
+            <button onclick="applyEstimatedSpeeds()"
+              class="w-full py-2.5 rounded-xl bg-[#EEF0FF] hover:bg-indigo-100 text-[#4338CA] text-xs font-extrabold transition">
+              이 역학 모델 속도로 바로 시작하기 &gt;
+            </button>
+          </div>
+
+          <!-- [STEP 2] 10초 실측 게이지 및 듀얼 측정 카드 (이준영 모듈) -->
+          <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-gray-100 flex flex-col items-center">
+            <div class="w-full flex items-center justify-between mb-1">
+              <span class="text-xs font-extrabold text-gray-800">② 10초 이동 테스트 정밀 실측</span>
+              <span id="gauge-status-badge"
+                class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold">
+                신체 추정 적용됨
+              </span>
+            </div>
+
+            <!-- 반원형 속도 게이지 -->
+            <div class="relative w-48 h-24 flex items-end justify-center mt-1">
+              <svg viewBox="0 0 200 110" class="w-full h-full overflow-visible">
+                <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#E5E7EB" stroke-width="14"
+                  stroke-linecap="round" />
+                <path id="gauge-arc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#584CF4" stroke-width="14"
+                  stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="150"
+                  class="transition-all duration-500" />
+                <circle cx="20" cy="100" r="6" fill="#F59E0B" />
+              </svg>
+              <div class="absolute bottom-0.5 text-center">
+                <span id="gauge-speed-val" class="text-2xl font-extrabold text-gray-900">5.3</span>
+                <span class="text-[11px] font-semibold text-gray-400 ml-0.5">km/h</span>
+              </div>
+            </div>
+
+            <!-- 측정 대상 단계 선택 (걸음 / 뛰기 / 질주) -->
+            <div class="grid grid-cols-3 gap-1.5 w-full mt-3">
+              <button id="preset-walk" onclick="selectPreset('walk')"
+                class="py-1.5 px-1 rounded-xl border-2 border-[#584CF4] bg-[#F5F6FF] text-center transition">
+                <p class="text-[11px] font-bold text-[#584CF4]">걸음 (<span id="label-walk">5.3</span>)</p>
+              </button>
+              <button id="preset-jog" onclick="selectPreset('jog')"
+                class="py-1.5 px-1 rounded-xl border border-gray-200 bg-white text-center hover:bg-gray-50 transition">
+                <p class="text-[11px] font-semibold text-gray-600">뛰기 (<span id="label-jog">10.0</span>)</p>
+              </button>
+              <button id="preset-run" onclick="selectPreset('run')"
+                class="py-1.5 px-1 rounded-xl border border-gray-200 bg-white text-center hover:bg-gray-50 transition">
+                <p class="text-[11px] font-semibold text-gray-600">질주 (<span id="label-run">14.9</span>)</p>
+              </button>
+            </div>
+
+            <!-- 실내 직접입력 vs 야외 GPS 모드 전환 탭 -->
+            <div class="grid grid-cols-2 gap-1 w-full bg-gray-100 p-1 rounded-xl mt-3 text-[11px]">
+              <button id="tab-manual" onclick="switchMeasureTab('manual')"
+                class="py-1.5 rounded-lg bg-white text-gray-900 font-bold shadow-xs transition">
+                📏 거리 직접 입력 (실내)
+              </button>
+              <button id="tab-gps" onclick="switchMeasureTab('gps')"
+                class="py-1.5 rounded-lg text-gray-500 font-semibold transition">
+                🛰️ GPS 자동 측정 (야외)
+              </button>
+            </div>
+
+            <!-- [모드 A] 실내 시연용 10초 타이머 + 거리 직접 입력 -->
+            <div id="panel-manual" class="w-full mt-2.5 space-y-2">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="text-gray-500 font-medium">3초 준비 후 10초간 이동 테스트</span>
+                <span id="manual-status" class="font-bold text-[#584CF4]">대기 중</span>
+              </div>
+              <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div id="manual-bar" class="h-full bg-[#584CF4] w-0 transition-all duration-100"></div>
+              </div>
+              <button id="manual-btn" onclick="startManualTest()"
+                class="w-full py-2.5 rounded-xl bg-[#181B24] hover:bg-gray-800 text-white text-xs font-bold transition">
+                10초 타이머 시작 (3초 준비 카운트다운)
+              </button>
+
+              <!-- 10초 이동 거리 입력 칸 -->
+              <div id="manual-distance-box" class="flex items-center gap-1.5 pt-1">
+                <input id="manual-distance" type="number" step="0.1" min="1" max="100"
+                  placeholder="10초 이동 거리 입력 (예: 14.5m)"
+                  class="flex-1 bg-[#F8F9FE] border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#584CF4]" />
+                <button onclick="applyManualDistance()"
+                  class="px-3.5 py-2 rounded-xl bg-[#584CF4] hover:bg-[#483CE0] text-white text-xs font-bold shrink-0">
+                  속도 반영
+                </button>
+              </div>
+            </div>
+
+            <!-- [모드 B] 야외용 GPS 자동 측정 (오차 20m 필터 + 하버사인 공식) -->
+            <div id="panel-gps" class="hidden w-full mt-2.5 space-y-2">
+              <div
+                class="bg-[#F8F9FE] rounded-xl p-2.5 border border-gray-100 flex items-center justify-between text-[11px]">
+                <div>
+                  <p class="text-gray-400">GPS 누적 이동거리 (오차 ≤20m)</p>
+                  <p class="font-extrabold text-gray-800 text-xs mt-0.5"><span id="gps-dist">0.0</span> m · <span
+                      id="gps-sec">0.0</span> 초</p>
+                </div>
+                <span id="gps-accuracy" class="px-2 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] font-bold">GPS
+                  대기</span>
+              </div>
+              <button id="gps-btn" onclick="toggleGpsMeasure()"
+                class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition">
+                🛰️ 야외 GPS 10초 자동 측정 시작
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-3.5 bg-white border-t border-gray-100 shrink-0">
+        <button onclick="saveSpeedAndProceed()"
+          class="w-full py-3 rounded-xl bg-[#584CF4] hover:bg-[#483CE0] text-white text-xs font-bold shadow-md shadow-indigo-200 transition flex items-center justify-center gap-1">
+          <span>측정 속도 저장 후 맞춤 탐색으로 이동</span>
+          <span>&gt;</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         [SCREEN 2] 홈 메인: 목적지를 추천해 드릴까요?
+    ====================================================================== -->
+    <div id="screen-home" class="screen flex-1 flex-col justify-between">
+      <div>
+        <div class="bg-white px-5 py-4 flex items-center justify-between border-b border-gray-100">
+          <h1 class="font-extrabold text-lg text-gray-900">지도</h1>
+          <button onclick="goScreen('screen-speed')" title="속도 재측정"
+            class="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="p-4 mt-2">
+          <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 flex flex-col items-center text-center">
+            <div class="relative w-44 h-24 flex items-end justify-center mt-2">
+              <svg viewBox="0 0 200 110" class="w-full h-full overflow-visible">
+                <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#584CF4" stroke-width="14"
+                  stroke-linecap="round" />
+              </svg>
+              <div
+                class="absolute bottom-2 w-10 h-10 rounded-full bg-[#EEF0FF] flex items-center justify-center text-[#584CF4]">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd"
+                    d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
+                    clip-rule="evenodd" />
+                </svg>
+              </div>
+            </div>
+
+            <h2 class="text-lg font-extrabold text-gray-900 mt-4">목적지를 추천해 드릴까요?</h2>
+            <p class="text-xs text-gray-400 mt-1">내 보행 속도와 원하는 분위기를 한 번에 분석해요</p>
+
+            <div class="grid grid-cols-3 gap-2.5 w-full mt-6">
+              <div class="bg-[#F8F9FE] rounded-2xl py-3 px-2 border border-gray-100">
+                <p class="text-[10px] text-gray-400 font-medium">걷는 속도</p>
+                <p class="text-sm font-extrabold text-gray-800 mt-1"><span id="home-walk-val">5.3</span> <span
+                    class="text-[10px] font-normal">km/h</span></p>
+              </div>
+              <div class="bg-[#F8F9FE] rounded-2xl py-3 px-2 border border-gray-100">
+                <p class="text-[10px] text-gray-400 font-medium">뛰는 속도</p>
+                <p class="text-sm font-extrabold text-gray-800 mt-1"><span id="home-jog-val">10.0</span> <span
+                    class="text-[10px] font-normal">km/h</span></p>
+              </div>
+              <div class="bg-[#F8F9FE] rounded-2xl py-3 px-2 border border-gray-100">
+                <p class="text-[10px] text-gray-400 font-medium">질주 속도</p>
+                <p class="text-sm font-extrabold text-gray-800 mt-1"><span id="home-run-val">14.9</span> <span
+                    class="text-[10px] font-normal">km/h</span></p>
+              </div>
+            </div>
+
+            <button onclick="goScreen('screen-chat')"
+              class="w-full mt-6 py-4 rounded-2xl bg-[#584CF4] hover:bg-[#483CE0] text-white text-sm font-bold shadow-lg shadow-indigo-200 transition flex items-center justify-center gap-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <span>AI 맞춤형 장소 탐색 시작</span>
+            </button>
+          </div>
+
+          <div onclick="goScreen('screen-coach')"
+            class="mt-3.5 bg-white rounded-2xl p-3.5 border border-gray-100 shadow-sm flex items-center justify-between cursor-pointer hover:bg-indigo-50/40 transition">
+            <div class="flex items-center gap-3">
+              <div
+                class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold text-sm">
+                🚌</div>
+              <div>
+                <p class="text-xs font-bold text-gray-800">102번 버스 실시간 보행 코칭</p>
+                <p class="text-[11px] text-gray-400">내 속도 기준 탑승 가능 여부 바로 확인</p>
+              </div>
+            </div>
+            <span class="text-gray-400 text-sm font-bold">&gt;</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white border-t border-gray-100 px-8 py-2.5 flex items-center justify-between text-[11px]">
+        <button onclick="goScreen('screen-home')" class="flex flex-col items-center gap-1 text-[#584CF4] font-bold">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+          </svg>
+          <span>홈</span>
+        </button>
+        <button onclick="goScreen('screen-records')"
+          class="flex flex-col items-center gap-1 text-gray-400 hover:text-gray-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <span>기록</span>
+        </button>
+        <button onclick="goScreen('screen-speed')"
+          class="flex flex-col items-center gap-1 text-gray-400 hover:text-gray-600">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span>프로필</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         [SCREEN 3] AI 챗봇 조건 입력 + 반경 설정
+    ====================================================================== -->
+    <div id="screen-chat" class="screen flex-1 flex-col justify-between">
+      <div class="bg-white px-4 py-3 flex items-center justify-between border-b border-gray-100 shrink-0">
+        <button onclick="goScreen('screen-home')"
+          class="p-1 text-gray-600 hover:text-gray-900 font-bold text-lg">&lt;</button>
+        <div class="flex items-center gap-1.5">
+          <div
+            class="w-6 h-6 rounded-full bg-[#EEF0FF] text-[#584CF4] flex items-center justify-center text-xs font-bold">
+            🤖</div>
+          <span class="font-bold text-sm text-gray-900">AI</span>
+        </div>
+        <button onclick="resetChat()" class="text-xs text-gray-400 hover:text-gray-600 font-semibold">초기화</button>
+      </div>
+
+      <div
+        class="bg-white px-4 py-2 border-b border-gray-100 flex items-center justify-between gap-2 text-[11px] shrink-0">
+        <div class="flex items-center gap-1">
+          <span class="text-gray-400">📍기준:</span>
+          <select id="chat-area" class="bg-gray-100 rounded-lg px-2 py-1 font-semibold text-gray-700 outline-none">
+            <option value="대전 유성구 궁동/어은동">충대 정문 (궁동·어은동)</option>
+            <option value="대전 서구 둔산동">둔산동</option>
+            <option value="대전 유성구 봉명동">유성온천역 (봉명동)</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-1">
+          <span class="text-gray-400">반경:</span>
+          <select id="chat-radius" class="bg-[#EEF0FF] text-[#584CF4] rounded-lg px-2 py-1 font-bold outline-none">
+            <option value="500m">500m</option>
+            <option value="1km" selected>1km 이내</option>
+            <option value="2km">2km 이내</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="chat-messages" class="flex-1 p-4 space-y-3 overflow-y-auto no-scrollbar">
+        <div class="flex items-start gap-2.5">
+          <div
+            class="w-7 h-7 rounded-full bg-[#584CF4] text-white flex items-center justify-center text-xs shrink-0 mt-0.5">
+            🤖</div>
+          <div
+            class="bg-white rounded-2xl rounded-tl-none px-3.5 py-2.5 shadow-sm border border-gray-100 text-xs text-gray-800 leading-relaxed max-w-[250px]">
+            안녕하세요! 어떤 조건으로 목적지를 찾을까요?
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white border-t border-gray-100 p-3 space-y-2 shrink-0">
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+          <button onclick="sendQuickPrompt('조용한 분위기의 카페를 찾고 있어요')"
+            class="whitespace-nowrap px-3 py-1.5 rounded-full bg-[#F5F6FF] border border-indigo-100 text-[11px] font-semibold text-[#584CF4] hover:bg-indigo-100 transition">
+            🤫 조용한 카공 카페
+          </button>
+          <button onclick="sendQuickPrompt('팀플 대화하기 편하고 콘센트 많은 넓은 카페 찾아줘')"
+            class="whitespace-nowrap px-3 py-1.5 rounded-full bg-[#F5F6FF] border border-indigo-100 text-[11px] font-semibold text-[#584CF4] hover:bg-indigo-100 transition">
+            💻 팀플·콘센트 많은 곳
+          </button>
+        </div>
+        <form onsubmit="handleChatSubmit(event)" class="flex items-center gap-2">
+          <input id="chat-input" type="text" placeholder="메시지를 입력하세요..."
+            class="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-xs text-gray-800 outline-none focus:ring-2 focus:ring-[#584CF4]/30" />
+          <button type="submit"
+            class="w-9 h-9 rounded-full bg-[#584CF4] hover:bg-[#483CE0] text-white flex items-center justify-center shadow-sm transition shrink-0">
+            <svg class="w-4 h-4 translate-x-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+            </svg>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         [SCREEN 4] 목적지 리포트 (LLM 리뷰 정제 3줄 요약)
+    ====================================================================== -->
+    <div id="screen-report" class="screen flex-1 flex-col justify-between overflow-y-auto no-scrollbar">
+      <div>
+        <div class="bg-white px-4 py-3 flex items-center justify-between border-b border-gray-100">
+          <button onclick="goScreen('screen-chat')"
+            class="p-1 text-gray-600 hover:text-gray-900 font-bold text-lg">&lt;</button>
+          <div class="flex items-center gap-1.5">
+            <div
+              class="w-6 h-6 rounded-full bg-[#EEF0FF] text-[#584CF4] flex items-center justify-center text-xs font-bold">
+              🤖</div>
+            <span class="font-bold text-sm text-gray-900">AI</span>
+          </div>
+          <span class="w-6"></span>
+        </div>
+
+        <div class="p-4">
+          <div class="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 space-y-3.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[#584CF4] text-sm">★</span>
+                <h2 class="font-extrabold text-sm text-gray-900">목적지 리포트</h2>
+              </div>
+              <span id="report-radius-badge"
+                class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-[#584CF4]">반경 1km 이내</span>
+            </div>
+
+            <div class="flex items-center gap-1.5 text-xs font-bold text-gray-800">
+              <span class="text-[#584CF4]">📍</span>
+              <span>추천 장소 : <span id="report-cafe-name" class="text-[#584CF4]">AI 분석 대기 중</span></span>
+            </div>
+
+            <div
+              class="relative w-full h-36 rounded-2xl overflow-hidden bg-gradient-to-br from-amber-900 via-stone-800 to-neutral-900 flex flex-col justify-between p-3.5 text-white">
+              <div class="flex justify-between items-start">
+                <span class="px-2 py-0.5 rounded-md bg-black/40 backdrop-blur text-[10px] font-semibold">광고성 리뷰 필터링
+                  완료</span>
+                <span class="px-2 py-0.5 rounded-md bg-[#584CF4] text-[10px] font-bold">AI 추천</span>
+              </div>
+              <div>
+                <p id="report-card-title" class="text-sm font-extrabold text-amber-200">추천 매장 정보</p>
+                <p id="report-address" class="text-[10px] text-gray-300 mt-0.5">AI 챗봇에서 원하는 조건을 입력해 주세요</p>
+              </div>
+            </div>
+
+            <div>
+              <p class="text-xs font-bold text-gray-800 mb-1.5 flex items-center gap-1">
+                <span>💡</span> 추천 이유
+              </p>
+              <div class="bg-[#F8F9FE] rounded-xl p-3 border border-gray-100 text-xs text-gray-700 leading-relaxed">
+                <span id="report-reason">채팅창에 원하는 분위기를 입력하면 AI가 분석한 결과가 이곳에 표시됩니다.</span>
+              </div>
+            </div>
+
+            <div>
+              <p class="text-xs font-bold text-gray-800 mb-1.5 flex items-center gap-1">
+                <span>✨</span> 추천 포인트
+              </p>
+              <ul id="report-points"
+                class="bg-[#F8F9FE] rounded-xl p-3 border border-gray-100 text-xs text-gray-700 space-y-1.5">
+                <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#584CF4]"></span>소음도 및 분위기
+                  요약</li>
+                <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#584CF4]"></span>좌석 여유 및
+                  테이블 크기 요약</li>
+                <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#584CF4]"></span>콘센트 유무 및
+                  편의시설 요약</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4 bg-white border-t border-gray-100 space-y-2">
+        <button onclick="goScreen('screen-route')"
+          class="w-full py-3.5 rounded-xl bg-[#584CF4] hover:bg-[#483CE0] text-white text-sm font-bold shadow-md shadow-indigo-200 transition flex items-center justify-center gap-1">
+          <span>경로 안내하기</span>
+          <span>&gt;</span>
+        </button>
+        <button onclick="openCandidatesModal()"
+          class="w-full py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition">
+          ☰ 추천 목적지 전체 확인 (3곳)
+        </button>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         [SCREEN 5] Phase 4: 맞춤 경로 안내
+    ====================================================================== -->
+    <div id="screen-route" class="screen flex-1 flex-col justify-between">
+      <div class="flex-1 flex flex-col">
+        <div class="bg-white px-4 py-3 flex items-center justify-between border-b border-gray-100">
+          <button onclick="goScreen('screen-report')"
+            class="p-1 text-gray-600 hover:text-gray-900 font-bold text-lg">&lt;</button>
+          <span class="font-bold text-sm text-gray-900">맞춤 경로 안내</span>
+          <span class="px-2 py-0.5 rounded-full bg-[#EEF0FF] text-[#584CF4] text-[10px] font-bold">Phase 4</span>
+        </div>
+
+        <div id="kakao-map" class="relative flex-1 bg-[#EBF1F6] overflow-hidden flex items-center justify-center">
+          <svg viewBox="0 0 360 360" class="w-full h-full object-cover">
+            <rect width="360" height="360" fill="#EDF2F7" />
+            <path d="M0 110 L360 140 M80 0 L120 360 M250 0 L220 360 M0 260 L360 240" stroke="#FFFFFF"
+              stroke-width="14" />
+            <path d="M0 110 L360 140 M80 0 L120 360 M250 0 L220 360 M0 260 L360 240" stroke="#CBD5E1"
+              stroke-width="1" />
+            <path d="M 95 255 L 112 122 L 235 130" fill="none" stroke="#584CF4" stroke-width="5" stroke-dasharray="8 6"
+              stroke-linecap="round" />
+            <circle cx="95" cy="255" r="9" fill="#10B981" stroke="#FFF" stroke-width="3" />
+            <rect x="52" y="270" width="86" height="22" rx="11" fill="#1E293B" />
+            <text x="95" y="284" text-anchor="middle" fill="#FFF" font-size="10" font-weight="bold">출발: 내 위치</text>
+            <circle cx="112" cy="122" r="8" fill="#F59E0B" stroke="#FFF" stroke-width="2.5" />
+            <rect x="65" y="92" width="95" height="20" rx="10" fill="#F59E0B" />
+            <text x="112" y="105" text-anchor="middle" fill="#FFF" font-size="9.5" font-weight="bold">102번 정류장
+              (480m)</text>
+            <circle cx="235" cy="130" r="10" fill="#584CF4" stroke="#FFF" stroke-width="3" />
+            <rect x="190" y="146" width="90" height="22" rx="11" fill="#584CF4" />
+            <text x="235" y="160" text-anchor="middle" fill="#FFF" font-size="10" font-weight="bold">추천 장소 도착</text>
+          </svg>
+
+          <div
+            class="absolute top-3 left-3 right-3 bg-white/95 backdrop-blur rounded-2xl p-3 shadow-md border border-gray-100 flex items-center justify-between">
+            <div>
+              <span class="text-[10px] font-bold text-[#584CF4] bg-[#EEF0FF] px-2 py-0.5 rounded">최적 탑승 경로</span>
+              <p class="text-xs font-extrabold text-gray-900 mt-1">정류장까지 도보 480m + 102번 버스</p>
+            </div>
+            <div class="text-right">
+              <p class="text-[10px] text-gray-400">버스 도착</p>
+              <p class="text-sm font-extrabold text-rose-500">6분 후</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-t-3xl -mt-4 relative z-10 shadow-lg border-t border-gray-100 space-y-3">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-gray-800">내 걷는 속도(<span id="route-user-speed">5.3</span>km/h) 기준 분석</span>
+            <span class="text-rose-500 font-bold">도보 약 8분 소요 예상</span>
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-900">
+            ⚠️ 현재 걸음 속도로는 <strong>2분 차이로 버스를 놓칠 위험</strong>이 있습니다. 실시간 보행 코칭을 켜세요!
+          </div>
+          <button onclick="goScreen('screen-coach')"
+            class="w-full py-3.5 rounded-xl bg-[#584CF4] hover:bg-[#483CE0] text-white text-sm font-bold shadow-md shadow-indigo-200 transition flex items-center justify-center gap-1">
+            <span>실시간 AI 보행 코칭 시작</span>
+            <span>&gt;</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         [SCREEN 6] Phase 5: 문오이 지도 (실시간 AI 보행 코칭)
+    ====================================================================== -->
+    <div id="screen-coach" class="screen flex-1 flex-col justify-between overflow-y-auto no-scrollbar">
+      <div>
+        <div class="bg-white px-5 py-3 flex items-center justify-between border-b border-gray-100">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#584CF4]"></span>
+            <h1 class="font-bold text-base text-gray-900">문오이 지도</h1>
+          </div>
+          <span class="px-2.5 py-0.5 rounded-full bg-[#EEF0FF] text-[#584CF4] text-xs font-bold">Phase 5</span>
+        </div>
+
+        <div class="p-4 space-y-3">
+          <div id="coach-banner"
+            class="bg-[#F59E0B] text-white rounded-2xl p-4 shadow-md transition-colors duration-300">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/20 text-[10px] font-bold">
+                ✦ 실시간 AI 코칭
+              </span>
+              <button id="haptic-toggle" onclick="toggleHaptic()"
+                class="text-[10px] bg-black/20 px-2 py-0.5 rounded-full font-semibold">
+                📳 진동 템포 ON
+              </button>
+            </div>
+            <h2 id="coach-title" class="text-sm font-extrabold leading-snug">
+              가볍게 뛰셔야합니다! 본인의 뛰는 속도로 전환하세요!
+            </h2>
+            <p id="coach-desc" class="text-[11px] text-white/90 mt-1 leading-relaxed">
+              버스 도착까지 6분 남았으나 현재 도보 속도 시 8분 소요 예상됩니다.
+            </p>
+          </div>
+
+          <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-gray-800">목적지 / 버스정류장</span>
+              <span class="px-2.5 py-0.5 rounded-full bg-indigo-50 text-[#584CF4] text-[11px] font-bold">102번 버스</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2.5">
+              <div class="bg-[#F8F9FE] rounded-xl p-3 text-center border border-gray-100">
+                <p class="text-[10px] text-gray-400 font-semibold">버스 남은 시간</p>
+                <p id="coach-bus-time" class="text-lg font-extrabold text-rose-500 mt-0.5">6분 남음</p>
+              </div>
+              <div class="bg-[#F8F9FE] rounded-xl p-3 text-center border border-gray-100">
+                <p class="text-[10px] text-gray-400 font-semibold">내 예상 도착 시간</p>
+                <p id="coach-my-time" class="text-lg font-extrabold text-gray-900 mt-0.5">8분 소요</p>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-1">
+              <span class="text-[11px] font-semibold text-gray-500">시간 비교 시뮬레이션 추이 그래프</span>
+              <span id="coach-diff-badge" class="text-[11px] font-bold text-rose-500">+2분 지연 위험</span>
+            </div>
+
+            <div
+              class="w-full h-20 bg-[#F8F9FE] rounded-xl p-2 flex items-center justify-center border border-gray-100">
+              <svg viewBox="0 0 260 65" class="w-full h-full overflow-visible">
+                <line x1="10" y1="35" x2="250" y2="35" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="3 3" />
+                <path d="M 15 45 Q 80 15, 145 35 T 245 25" fill="none" stroke="#584CF4" stroke-width="3"
+                  stroke-linecap="round" />
+                <path d="M 15 25 Q 90 50, 155 32 T 245 48" fill="none" stroke="#F43F5E" stroke-width="2.5"
+                  stroke-dasharray="4 4" stroke-linecap="round" />
+                <circle cx="148" cy="34" r="4.5" fill="#584CF4" stroke="#FFF" stroke-width="1.5" />
+              </svg>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-3.5 shadow-sm border border-gray-100">
+            <p class="text-[11px] font-bold text-gray-500 mb-2">시뮬레이션 모드 전환 (테스트용)</p>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button onclick="setSimMode('urgent')" id="sim-urgent"
+                class="py-2 px-1 rounded-xl bg-rose-50 border-2 border-rose-400 text-rose-600 text-[11px] font-extrabold transition">
+                긴급 (뛰어야 함)
+              </button>
+              <button onclick="setSimMode('relaxed')" id="sim-relaxed"
+                class="py-2 px-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold transition">
+                여유 (정상 보행)
+              </button>
+              <button onclick="setSimMode('planb')" id="sim-planb"
+                class="py-2 px-1 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-bold transition">
+                지연 (다음 버스)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4 bg-white border-t border-gray-100 space-y-2">
+        <button onclick="openArrivalModal()"
+          class="w-full py-3 rounded-xl bg-[#584CF4] hover:bg-[#483CE0] text-white text-xs font-bold shadow-sm transition">
+          🎉 버스 탑승 및 목적지 도착 완료
+        </button>
+        <button onclick="goScreen('screen-speed')"
+          class="w-full py-3 rounded-xl bg-[#181B24] hover:bg-gray-800 text-white text-xs font-bold transition">
+          &lt; 속도 측정으로 돌아가기
+        </button>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         [SCREEN 7] 보조 탭: 내 보행 및 탑승 기록 화면
+    ====================================================================== -->
+    <div id="screen-records" class="screen flex-1 flex-col justify-between">
+      <div>
+        <div class="bg-white px-5 py-4 flex items-center justify-between border-b border-gray-100">
+          <h1 class="font-extrabold text-lg text-gray-900">보행 및 탑승 기록</h1>
+          <span class="text-xs font-bold text-[#584CF4]">최근 7일</span>
+        </div>
+        <div class="p-4 space-y-3">
+          <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center justify-between">
+            <div>
+              <p class="text-xs text-gray-400">버스 정시 탑승 성공률</p>
+              <p class="text-2xl font-extrabold text-[#584CF4] mt-0.5">94.2%</p>
+            </div>
+            <div class="text-right">
+              <p class="text-xs text-gray-400">평균 보행 속도</p>
+              <p class="text-lg font-extrabold text-gray-800 mt-0.5"><span id="record-avg-speed">5.3</span> km/h</p>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-2.5 text-xs">
+            <p class="font-bold text-gray-800">최근 코칭 히스토리</p>
+            <div class="p-2.5 rounded-xl bg-[#F8F9FE] flex justify-between items-center">
+              <div>
+                <p class="font-bold text-gray-800">어은동 감성카페 (102번 버스)</p>
+                <p class="text-[11px] text-gray-400">가볍게 뛰기 코칭 전환 → 1분 전 탑승 성공</p>
+              </div>
+              <span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold text-[10px]">성공</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white border-t border-gray-100 px-8 py-2.5 flex items-center justify-between text-[11px]">
+        <button onclick="goScreen('screen-home')" class="flex flex-col items-center gap-1 text-gray-400">
+          <span>🏠</span><span>홈</span>
+        </button>
+        <button onclick="goScreen('screen-records')" class="flex flex-col items-center gap-1 text-[#584CF4] font-bold">
+          <span>📊</span><span>기록</span>
+        </button>
+        <button onclick="goScreen('screen-speed')" class="flex flex-col items-center gap-1 text-gray-400">
+          <span>👤</span><span>프로필</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         [MODAL 1] 추천 목적지 전체 확인 모달 (후보 3곳 비교)
+    ====================================================================== -->
+    <div id="modal-candidates" class="hidden absolute inset-0 bg-black/50 backdrop-blur-xs z-30 flex items-end">
+      <div class="bg-white w-full rounded-t-3xl p-5 space-y-3 animate-[fadeIn_0.2s_ease-out]">
+        <div class="flex items-center justify-between">
+          <h3 class="font-extrabold text-sm text-gray-900">AI 분석 추천 목적지 TOP 3</h3>
+          <button onclick="closeModal('modal-candidates')"
+            class="text-gray-400 hover:text-gray-700 font-bold text-sm">✕</button>
+        </div>
+        <div id="candidates-list" class="space-y-2 max-h-72 overflow-y-auto no-scrollbar"></div>
+      </div>
+    </div>
+
+    <!-- =====================================================================
+         [MODAL 2] 여정 완료 모달
+    ====================================================================== -->
+    <div id="modal-arrival"
+      class="hidden absolute inset-0 bg-black/50 backdrop-blur-xs z-30 flex items-center justify-center p-5">
+      <div class="bg-white w-full rounded-3xl p-6 text-center space-y-3 shadow-xl">
+        <div
+          class="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl mx-auto">
+          🎉</div>
+        <h3 class="font-extrabold text-base text-gray-900">제시간에 버스 탑승 &amp; 도착 완료!</h3>
+        <p class="text-xs text-gray-500 leading-relaxed">
+          맞춤형 속도 코칭으로 102번 버스를 놓치지 않고,<br />
+          AI가 검증한 공간에 무사히 도착했습니다.
+        </p>
+        <button onclick="closeModal('modal-arrival'); goScreen('screen-home');"
+          class="w-full py-3 rounded-xl bg-[#584CF4] text-white text-xs font-bold mt-2">
+          홈으로 돌아가기
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- =====================================================================
+       JAVASCRIPT: 이준영(속도측정) + 원렬(Gemini AI) 통합 스크립트
+  ====================================================================== -->
+  <script>
+    const userProfile = {
+      walk: 5.3,
+      jog: 10.0,
+      run: 14.9,
+      activeMode: 'walk',
+      measured: []
+    };
+
+    const estimatedProfile = {
+      walk: 5.3,
+      jog: 10.0,
+      run: 14.9
+    };
+
+    function goScreen(screenId) {
+      document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+      document.getElementById(screenId).classList.add('active');
+    }
+
+    // ---------------------------------------------------------
+    // ---------------------------------------------------------
+    // Phase 1-A: 인체측정 보행률 공식 + 역진자(Froude) 물리 모델 융합
+    // ---------------------------------------------------------
+    function updateBodyEstimate() {
+      const hCm = Math.min(Math.max(parseFloat(document.getElementById('input-height').value) || 172, 100), 230);
+      const fMm = Math.min(Math.max(parseFloat(document.getElementById('input-foot').value) || 265, 150), 350);
+
+      const hM = hCm / 100;       // 키 (m)
+      const fCm = fMm / 10;       // 발 길이 (cm)
+      const fM = fMm / 1000;      // 발 길이 (m)
+      const g = 9.81;             // 중력가속도 (m/s^2)
+      const safetyFactor = 1.05;  // 도심 보행 여유 계수 (5% 보수적 보정)
+
+      // [공식 1] 인체측정학(Anthropometry) 보폭 및 보행률(Cadence) 모델
+      // 발 구름 반경(Foot Rocker Radius)을 반영한 선형 보폭(cm)
+      const strideCm = (hCm * 0.35) + (fCm * 0.65);
+      const strideM = strideCm / 100;
+
+      const cadenceWalkKmh = (strideM * 106 * 60) / 1000;
+      const cadenceJogKmh = (strideM * 1.35 * 160 * 60) / 1000;
+      const cadenceRunKmh = (strideM * 1.70 * 190 * 60) / 1000;
+
+      // [공식 2] 기계역학 역진자(Inverted Pendulum) - 프루드 수(Froude Number) 모델
+      // 유효 다리 길이 L(m) = 고관절 비율(0.53*H) + 발목/발구름 보정(0.15*F)
+      const legLengthM = (0.53 * hM) + (0.15 * fM);
+
+      // Fr = 0.25 (인간 자연 보행 에너지 최적점), Fr = 0.50 (걷기->뛰기 전이 임계점)
+      const froudeOptWalkKmh = Math.sqrt(0.25 * g * legLengthM) * 3.6;
+      const froudeTransRunKmh = Math.sqrt(0.50 * g * legLengthM) * 3.6;
+      const froudeJogKmh = Math.sqrt(0.85 * g * legLengthM) * 3.6;
+      const froudeSprintKmh = Math.sqrt(1.80 * g * legLengthM) * 3.6;
+
+      // [공식 3] 두 역학 모델의 가중 평균(50:50) 후 안전율(Safety Factor) 적용
+      const walkKmh = parseFloat((((cadenceWalkKmh + froudeOptWalkKmh) / 2) / safetyFactor).toFixed(1));
+      const jogKmh = parseFloat((((cadenceJogKmh + froudeJogKmh) / 2) / safetyFactor).toFixed(1));
+      const runKmh = parseFloat((((cadenceRunKmh + froudeSprintKmh) / 2) / safetyFactor).toFixed(1));
+
+      estimatedProfile.walk = walkKmh;
+      estimatedProfile.jog = jogKmh;
+      estimatedProfile.run = runKmh;
+
+      // UI 수치 업데이트
+      document.getElementById('calc-stride').textContent = strideCm.toFixed(1);
+      document.getElementById('calc-leg').textContent = (legLengthM * 100).toFixed(1);
+      document.getElementById('froude-walk').textContent = froudeOptWalkKmh.toFixed(1);
+      document.getElementById('froude-trans').textContent = froudeTransRunKmh.toFixed(1);
+
+      document.getElementById('est-walk').textContent = walkKmh.toFixed(1);
+      document.getElementById('est-jog').textContent = jogKmh.toFixed(1);
+      document.getElementById('est-run').textContent = runKmh.toFixed(1);
+    }
+
+    function applyEstimatedSpeeds() {
+      updateBodyEstimate();
+      userProfile.walk = estimatedProfile.walk;
+      userProfile.jog = estimatedProfile.jog;
+      userProfile.run = estimatedProfile.run;
+      syncSpeedLabels();
+      document.getElementById('gauge-status-badge').textContent = "신체 추정 저장됨";
+      saveSpeedAndProceed();
+    }
+
+    function syncSpeedLabels() {
+      document.getElementById('label-walk').textContent = userProfile.walk.toFixed(1);
+      document.getElementById('label-jog').textContent = userProfile.jog.toFixed(1);
+      document.getElementById('label-run').textContent = userProfile.run.toFixed(1);
+      updateGaugeUI(userProfile[userProfile.activeMode]);
+    }
+
+    // ---------------------------------------------------------
+    // Phase 1-B: 반원형 게이지 및 측정 대상 모드 전환
+    // ---------------------------------------------------------
+    function updateGaugeUI(speed) {
+      document.getElementById('gauge-speed-val').textContent = speed.toFixed(1);
+      const maxSpeed = 22.0;
+      const ratio = Math.min(Math.max(speed / maxSpeed, 0.05), 1);
+      const offset = 251.2 * (1 - ratio);
+      document.getElementById('gauge-arc').style.strokeDashoffset = offset;
+    }
+
+    function selectPreset(mode) {
+      userProfile.activeMode = mode;
+      ['walk', 'jog', 'run'].forEach(m => {
+        const btn = document.getElementById(`preset-${m}`);
+        if (m === mode) {
+          btn.className = "py-1.5 px-1 rounded-xl border-2 border-[#584CF4] bg-[#F5F6FF] text-center transition";
+          btn.querySelector('p').className = "text-[11px] font-bold text-[#584CF4]";
+        } else {
+          btn.className = "py-1.5 px-1 rounded-xl border border-gray-200 bg-white text-center hover:bg-gray-50 transition";
+          btn.querySelector('p').className = "text-[11px] font-semibold text-gray-600";
+        }
+      });
+      updateGaugeUI(userProfile[mode]);
+    }
+
+    function switchMeasureTab(tab) {
+      const btnM = document.getElementById('tab-manual');
+      const btnG = document.getElementById('tab-gps');
+      const panM = document.getElementById('panel-manual');
+      const panG = document.getElementById('panel-gps');
+
+      if (tab === 'manual') {
+        btnM.className = "py-1.5 rounded-lg bg-white text-gray-900 font-bold shadow-xs transition";
+        btnG.className = "py-1.5 rounded-lg text-gray-500 font-semibold transition";
+        panM.classList.remove('hidden');
+        panG.classList.add('hidden');
+      } else {
+        btnG.className = "py-1.5 rounded-lg bg-white text-gray-900 font-bold shadow-xs transition";
+        btnM.className = "py-1.5 rounded-lg text-gray-500 font-semibold transition";
+        panG.classList.remove('hidden');
+        panM.classList.add('hidden');
+      }
+    }
+
+    // ---------------------------------------------------------
+    // Phase 1-C: 실내 시연용 10초 타이머 + 거리 직접 입력 모드
+    // ---------------------------------------------------------
+    let manualTimer = null;
+
+    function startManualTest() {
+      if (manualTimer) clearInterval(manualTimer);
+      const btn = document.getElementById('manual-btn');
+      const status = document.getElementById('manual-status');
+      const bar = document.getElementById('manual-bar');
+
+      btn.disabled = true;
+      btn.classList.add('opacity-70');
+      let prep = 3;
+      status.textContent = `준비: ${prep}초 후 출발!`;
+      bar.style.width = "0%";
+
+      manualTimer = setInterval(() => {
+        if (prep > 1) {
+          prep--;
+          status.textContent = `준비: ${prep}초 후 출발!`;
+        } else if (prep === 1) {
+          prep = 0;
+          const start = performance.now();
+          clearInterval(manualTimer);
+
+          manualTimer = setInterval(() => {
+            const elapsed = (performance.now() - start) / 1000;
+            if (elapsed < 10.0) {
+              status.textContent = `측정 중: ${elapsed.toFixed(1)} / 10.0초`;
+              bar.style.width = `${(elapsed / 10) * 100}%`;
+            } else {
+              clearInterval(manualTimer);
+              manualTimer = null;
+              status.textContent = "10초 완료! 아래에 이동 거리를 입력하세요";
+              bar.style.width = "100%";
+              btn.disabled = false;
+              btn.classList.remove('opacity-70');
+              btn.textContent = "10초 타이머 다시 시작";
+              document.getElementById('manual-distance').focus();
+            }
+          }, 100);
+        }
+      }, 1000);
+    }
+
+    function applyManualDistance() {
+      const dist = parseFloat(document.getElementById('manual-distance').value);
+      if (!dist || dist <= 0) {
+        alert("10초 동안 이동한 거리(m)를 입력해 주세요! (예: 14.5)");
+        return;
+      }
+      const speedKmh = parseFloat(((dist / 10.0) * 3.6).toFixed(1));
+      const clamped = Math.min(Math.max(speedKmh, 2.0), 25.0);
+
+      userProfile[userProfile.activeMode] = clamped;
+      userProfile.measured.push({ mode: userProfile.activeMode, type: "manual", speed: clamped });
+      syncSpeedLabels();
+      document.getElementById('gauge-status-badge').textContent = `직접입력 실측 완료 (${clamped}km/h)`;
+    }
+
+    // ---------------------------------------------------------
+    // Phase 1-D: 야외 실측용 GPS 자동 측정 (오차 20m 필터 + 하버사인)
+    // ---------------------------------------------------------
+    let gpsWatchId = null;
+    let gpsTimerId = null;
+    let gpsTotalDist = 0;
+    let gpsLastCoords = null;
+    let gpsStartTime = 0;
+
+    function calcHaversineMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = d => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function toggleGpsMeasure() {
+      const btn = document.getElementById('gps-btn');
+      const accBadge = document.getElementById('gps-accuracy');
+
+      if (gpsWatchId !== null) {
+        stopGpsMeasure();
+        return;
+      }
+
+      if (!navigator.geolocation) {
+        accBadge.textContent = "GPS 미지원 브라우저";
+        return;
+      }
+
+      gpsTotalDist = 0;
+      gpsLastCoords = null;
+      gpsStartTime = performance.now();
+      btn.textContent = "⏹️ GPS 측정 중지 및 반영";
+      btn.classList.replace('bg-emerald-600', 'bg-rose-600');
+      accBadge.textContent = "위성 신호 수신 중...";
+
+      gpsWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          if (accuracy > 20) {
+            accBadge.textContent = `오차 초과(${Math.round(accuracy)}m) 제외`;
+            return;
+          }
+          accBadge.textContent = `정확도 양호 (${Math.round(accuracy)}m)`;
+          if (gpsLastCoords) {
+            const d = calcHaversineMeters(gpsLastCoords.lat, gpsLastCoords.lng, latitude, longitude);
+            if (d >= 0.5) gpsTotalDist += d;
+          }
+          gpsLastCoords = { lat: latitude, lng: longitude };
+          document.getElementById('gps-dist').textContent = gpsTotalDist.toFixed(1);
+        },
+        (err) => {
+          accBadge.textContent = "위치 권한/HTTPS 필요 (실내 시 직접입력 사용)";
+          stopGpsMeasure(false);
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      );
+
+      gpsTimerId = setInterval(() => {
+        const sec = (performance.now() - gpsStartTime) / 1000;
+        document.getElementById('gps-sec').textContent = sec.toFixed(1);
+        if (sec >= 10.0) {
+          stopGpsMeasure(true);
+        }
+      }, 200);
+    }
+
+    function stopGpsMeasure(applyResult = true) {
+      if (gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId = null;
+      }
+      if (gpsTimerId !== null) {
+        clearInterval(gpsTimerId);
+        gpsTimerId = null;
+      }
+      const btn = document.getElementById('gps-btn');
+      btn.textContent = "🛰️ 야외 GPS 10초 자동 측정 시작";
+      btn.classList.replace('bg-rose-600', 'bg-emerald-600');
+
+      const elapsed = Math.max((performance.now() - gpsStartTime) / 1000, 1.0);
+      if (applyResult && gpsTotalDist > 1.0) {
+        const speedKmh = parseFloat(((gpsTotalDist / elapsed) * 3.6).toFixed(1));
+        const clamped = Math.min(Math.max(speedKmh, 2.0), 25.0);
+        userProfile[userProfile.activeMode] = clamped;
+        userProfile.measured.push({ mode: userProfile.activeMode, type: "gps", speed: clamped });
+        syncSpeedLabels();
+        document.getElementById('gauge-status-badge').textContent = `GPS 실측 완료 (${clamped}km/h)`;
+      }
+    }
+
+    // ---------------------------------------------------------
+    // Phase 1-E: FastAPI(/api/profile) + localStorage 저장 및 화면 동기화
+    // ---------------------------------------------------------
+    async function saveSpeedAndProceed() {
+      document.getElementById('home-walk-val').textContent = userProfile.walk.toFixed(1);
+      document.getElementById('home-jog-val').textContent = userProfile.jog.toFixed(1);
+      document.getElementById('home-run-val').textContent = userProfile.run.toFixed(1);
+      document.getElementById('route-user-speed').textContent = userProfile.walk.toFixed(1);
+      document.getElementById('record-avg-speed').textContent = userProfile.walk.toFixed(1);
+
+      const payload = {
+        walk: userProfile.walk,
+        jog: userProfile.jog,
+        run: userProfile.run,
+        sprint: userProfile.run,
+        measured: userProfile.measured
+      };
+
+      localStorage.setItem('munoi_speed_profile', JSON.stringify(payload));
+      try {
+        await fetch('/api/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (e) {
+        // 오프라인/단독 HTML 테스트 시에도 정상 진행
+      }
+      goScreen('screen-home');
+    }
+
+    async function loadSavedProfile() {
+      try {
+        const res = await fetch('/api/profile');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.walk > 0) {
+            userProfile.walk = data.walk;
+            userProfile.jog = data.jog || data.run || userProfile.jog;
+            userProfile.run = data.sprint || data.run || userProfile.run;
+            syncSpeedLabels();
+            return;
+          }
+        }
+      } catch (e) { }
+
+      const cached = localStorage.getItem('munoi_speed_profile');
+      if (cached) {
+        const data = JSON.parse(cached);
+        userProfile.walk = data.walk || userProfile.walk;
+        userProfile.jog = data.jog || userProfile.jog;
+        userProfile.run = data.run || userProfile.run;
+        syncSpeedLabels();
+      }
+    }
+
+    // ---------------------------------------------------------
+    // Phase 3 & 4: 실제 Gemini AI 연동 로직
+    // ---------------------------------------------------------
+    let currentCandidates = [];
+
+    function appendChatBubble(text, sender = 'ai') {
+      const box = document.getElementById('chat-messages');
+      const wrapper = document.createElement('div');
+      if (sender === 'user') {
+        wrapper.className = "flex justify-end";
+        wrapper.innerHTML = `<div class="bg-[#584CF4] text-white rounded-2xl rounded-tr-none px-3.5 py-2.5 text-xs shadow-sm max-w-[240px] leading-relaxed">${text}</div>`;
+      } else {
+        wrapper.className = "flex items-start gap-2.5";
+        wrapper.innerHTML = `
+          <div class="w-7 h-7 rounded-full bg-[#584CF4] text-white flex items-center justify-center text-xs shrink-0 mt-0.5">🤖</div>
+          <div class="bg-white rounded-2xl rounded-tl-none px-3.5 py-2.5 shadow-sm border border-gray-100 text-xs text-gray-800 leading-relaxed max-w-[250px]">${text}</div>
+        `;
+      }
+      box.appendChild(wrapper);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function sendQuickPrompt(text) {
+      document.getElementById('chat-input').value = text;
+      handleChatSubmit(new Event('submit'));
+    }
+
+    async function handleChatSubmit(e) {
+      e.preventDefault();
+      const input = document.getElementById('chat-input');
+      const query = input.value.trim();
+      if (!query) return;
+
+      const area = document.getElementById('chat-area').value;
+      const radius = document.getElementById('chat-radius').value;
+
+      appendChatBubble(query, 'user');
+      input.value = '';
+
+      appendChatBubble(`네! ${area} (${radius}) 내에서 "${query}" 조건에 맞는 장소를 AI가 분석 중입니다...`, 'ai');
+
+      const box = document.getElementById('chat-messages');
+      const loader = document.createElement('div');
+      loader.id = "chat-loader";
+      loader.className = "flex items-start gap-2.5";
+      loader.innerHTML = `
+        <div class="w-7 h-7 rounded-full bg-[#584CF4] text-white flex items-center justify-center text-xs shrink-0">🤖</div>
+        <div class="bg-white rounded-2xl px-4 py-3 shadow-sm border border-gray-100"><div class="dot-flashing"><span></span><span></span><span></span></div></div>
+      `;
+      box.appendChild(loader);
+      box.scrollTop = box.scrollHeight;
+
+      try {
+        const res = await fetch('/api/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: query, area: `${area} (${radius} 이내)` })
+        });
+        const data = await res.json();
+        loader.remove();
+
+        if (data.error) {
+          appendChatBubble(`오류: ${data.error}`, 'ai');
+          return;
+        }
+
+        if (data.cafes && data.cafes.length > 0) {
+          currentCandidates = data.cafes;
+          applyReportData(currentCandidates[0], radius);
+          goScreen('screen-report');
+        } else {
+          appendChatBubble("추천 결과를 불러오지 못했습니다. 다시 입력해 주세요.", 'ai');
+        }
+      } catch (err) {
+        loader.remove();
+        appendChatBubble("파이썬 서버와 연결되지 않았습니다! 주소창이 http://127.0.0.1:8000 인지 확인해 주세요.", 'ai');
+      }
+    }
+
+    function applyReportData(cafe, radius = '1km 이내') {
+      document.getElementById('report-radius-badge').textContent = `반경 ${radius}`;
+      document.getElementById('report-cafe-name').textContent = cafe.name;
+      document.getElementById('report-card-title').textContent = cafe.name;
+      document.getElementById('report-address').textContent = cafe.address;
+      document.getElementById('report-reason').textContent = cafe.reason;
+      const ul = document.getElementById('report-points');
+      ul.innerHTML = cafe.points.map(p => `<li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-[#584CF4]"></span>${p}</li>`).join('');
+    }
+
+    function resetChat() {
+      document.getElementById('chat-messages').innerHTML = `
+        <div class="flex items-start gap-2.5">
+          <div class="w-7 h-7 rounded-full bg-[#584CF4] text-white flex items-center justify-center text-xs shrink-0 mt-0.5">🤖</div>
+          <div class="bg-white rounded-2xl rounded-tl-none px-3.5 py-2.5 shadow-sm border border-gray-100 text-xs text-gray-800 leading-relaxed max-w-[250px]">
+            안녕하세요! 어떤 조건으로 목적지를 찾을까요?
+          </div>
+        </div>
+      `;
+    }
+
+    function openCandidatesModal() {
+      const list = document.getElementById('candidates-list');
+      if (currentCandidates.length === 0) {
+        list.innerHTML = `<p class="text-xs text-gray-500 py-4 text-center">먼저 AI 챗봇에서 원하는 장소를 검색해 주세요!</p>`;
+      } else {
+        list.innerHTML = currentCandidates.map((c, idx) => `
+          <div onclick="selectCandidate(${idx})" class="p-3 rounded-2xl border border-gray-200 hover:border-[#584CF4] hover:bg-[#F5F6FF] cursor-pointer transition">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-extrabold text-gray-900">${idx + 1}. ${c.name}</span>
+              <span class="text-[10px] font-bold text-[#584CF4]">선택하기 &gt;</span>
+            </div>
+            <p class="text-[11px] text-gray-500 mt-1">${c.reason}</p>
+          </div>
+        `).join('');
+      }
+      document.getElementById('modal-candidates').classList.remove('hidden');
+    }
+
+    function selectCandidate(idx) {
+      applyReportData(currentCandidates[idx], document.getElementById('chat-radius').value);
+      closeModal('modal-candidates');
+    }
+
+    function openArrivalModal() {
+      document.getElementById('modal-arrival').classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    // ---------------------------------------------------------
+    // Phase 5: 실시간 보행 코칭 시뮬레이션
+    // ---------------------------------------------------------
+    let hapticOn = true;
+    function toggleHaptic() {
+      hapticOn = !hapticOn;
+      document.getElementById('haptic-toggle').textContent = hapticOn ? "📳 진동 템포 ON" : "🔇 진동 템포 OFF";
+    }
+
+    function setSimMode(mode) {
+      const banner = document.getElementById('coach-banner');
+      const title = document.getElementById('coach-title');
+      const desc = document.getElementById('coach-desc');
+      const busTime = document.getElementById('coach-bus-time');
+      const myTime = document.getElementById('coach-my-time');
+      const diff = document.getElementById('coach-diff-badge');
+
+      document.getElementById('sim-urgent').className = "py-2 px-1 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-[11px] font-bold transition";
+      document.getElementById('sim-relaxed').className = "py-2 px-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold transition";
+      document.getElementById('sim-planb').className = "py-2 px-1 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-bold transition";
+
+      if (mode === 'urgent') {
+        banner.className = "bg-[#F59E0B] text-white rounded-2xl p-4 shadow-md transition-colors duration-300";
+        title.textContent = "가볍게 뛰셔야합니다! 본인의 뛰는 속도로 전환하세요!";
+        desc.textContent = `버스 도착까지 6분 남았으나 현재 도보 속도(${userProfile.walk.toFixed(1)}km/h) 시 8분 소요 예상됩니다.`;
+        busTime.textContent = "6분 남음";
+        busTime.className = "text-lg font-extrabold text-rose-500 mt-0.5";
+        myTime.textContent = "8분 소요";
+        diff.textContent = "+2분 지연 위험";
+        diff.className = "text-[11px] font-bold text-rose-500";
+        document.getElementById('sim-urgent').classList.add('border-2', 'border-rose-500');
+      } else if (mode === 'relaxed') {
+        banner.className = "bg-emerald-500 text-white rounded-2xl p-4 shadow-md transition-colors duration-300";
+        title.textContent = "여유 있습니다! 평소 걷는 속도를 유지하세요.";
+        desc.textContent = `버스 도착까지 9분 남았으며, 현재 도보 속도(${userProfile.walk.toFixed(1)}km/h)로 2분 먼저 도착합니다.`;
+        busTime.textContent = "9분 남음";
+        busTime.className = "text-lg font-extrabold text-emerald-600 mt-0.5";
+        myTime.textContent = "7분 소요";
+        diff.textContent = "2분 여유 도착";
+        diff.className = "text-[11px] font-bold text-emerald-600";
+        document.getElementById('sim-relaxed').classList.add('border-2', 'border-emerald-600');
+      } else if (mode === 'planb') {
+        banner.className = "bg-rose-600 text-white rounded-2xl p-4 shadow-md transition-colors duration-300";
+        title.textContent = "무리해서 뛰지 마세요! 다음 버스(11분 뒤)로 자동 전환합니다.";
+        desc.textContent = "전력 질주 시에도 탑승이 어렵습니다. 안전을 위해 다음 102번 버스 경로로 재안내합니다.";
+        busTime.textContent = "2분 남음";
+        busTime.className = "text-lg font-extrabold text-rose-600 mt-0.5";
+        myTime.textContent = "8분 소요";
+        diff.textContent = "다음 배차(11분 후) 안내";
+        diff.className = "text-[11px] font-bold text-indigo-600";
+        document.getElementById('sim-planb').classList.add('border-2', 'border-slate-600');
+      }
+    }
+
+    // 초기 로드 시 신체 추정값 계산 및 서버 저장 프로필 불러오기
+    updateBodyEstimate();
+    updateGaugeUI(userProfile.walk);
+    loadSavedProfile();
+  </script>
+</body>
+
+</html>
